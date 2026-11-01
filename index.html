@@ -243,7 +243,8 @@ function encodePatch(p) {
 }
 
 function decodeDump(raw) {
-  if (!raw || raw.length < DUMP_SIZE) throw new Error('bad dump size');
+  if (!raw || raw.length < DUMP_SIZE)
+    throw new Error('bad dump size ' + (raw ? raw.length : 0) + '/' + DUMP_SIZE);
   if (raw[0]!==0x44 || raw[1]!==0x42 || raw[2]!==0x4B) throw new Error('bad magic');
   const occ = new DataView(raw.buffer, raw.byteOffset+4, 4).getUint32(0, true);
   const slots = {};
@@ -302,6 +303,11 @@ function selectFormula(i) {
     $('xmin').value = m[0].min; $('xmax').value = m[0].max;
     $('ymin').value = m[1].min; $('ymax').value = m[1].max;
     $('zmin').value = m[2].min; $('zmax').value = m[2].max;
+  } else {
+    // Keep draft text editable, but show empty maps defaults.
+    $('xmin').value = 0; $('xmax').value = 32;
+    $('ymin').value = 0; $('ymax').value = 32;
+    $('zmin').value = 0; $('zmax').value = 32;
   }
   renderFormulaGrid();
 }
@@ -405,6 +411,21 @@ selectFormula(16);
 let device, server, rxChar, txChar;
 let notifyAcc = '';
 let dumpBuf = null, liveBuf = null;
+let dumpExpect = 0;
+let syncFlags = { listOk: false, dumpOk: false, dumpErr: null };
+
+function waitFlag(get, timeoutMs, label) {
+  return new Promise((resolve, reject) => {
+    const t0 = Date.now();
+    const iv = setInterval(() => {
+      if (get()) { clearInterval(iv); resolve(); }
+      else if (Date.now() - t0 > timeoutMs) {
+        clearInterval(iv);
+        reject(new Error('timeout ' + label));
+      }
+    }, 40);
+  });
+}
 
 function hexToBytes(hex) {
   const out = new Uint8Array(hex.length/2);
@@ -417,14 +438,21 @@ function bytesToHex(buf) {
 
 async function sendLine(s) {
   if (!rxChar) throw new Error('not connected');
-  log('> ' + s);
   const data = new TextEncoder().encode(s + '\n');
-  // Prefer write-with-response; fall back to WR if needed.
   try {
-    if (rxChar.properties.write) await rxChar.writeValue(data);
-    else await rxChar.writeValueWithoutResponse(data);
+    if (rxChar.properties.writeWithoutResponse)
+      await rxChar.writeValueWithoutResponse(data);
+    else
+      await rxChar.writeValue(data);
+    log('> ' + s);
   } catch (e) {
-    await rxChar.writeValueWithoutResponse(data);
+    try {
+      await rxChar.writeValue(data);
+      log('> ' + s);
+    } catch (e2) {
+      log('write fail: ' + (e2.message || e2), 'err');
+      throw e2;
+    }
   }
   await new Promise(r => setTimeout(r, 40));
 }
@@ -439,28 +467,61 @@ async function sendHexChunks(prefix, buf) {
 
 function handleDevice(line) {
   log('< ' + line);
-  if (line.startsWith('F') && line.includes('=')) {
-    const m = line.match(/^F(\d+)=(.*)$/);
-    if (m) {
-      const slot = +m[1];
-      const rest = m[2];
-      if (!rest) { state.formulas[slot] = null; }
-      else {
-        const parts = rest.split('|');
-        const src = parts[0];
-        const maps = [0,1,2].map(i => {
-          if (!parts[i+1]) return {min:0,max:32};
-          const [a,b] = parts[i+1].split(',').map(Number);
-          return {min:a, max:b};
-        });
-        state.formulas[slot] = { src, maps };
+  // New: F17 0 32 0 32 0 32 (t>>x)|(t*y/z)   empty: F16
+  // Legacy: F17=expr|0,32|0,32|0,32
+  if (/^F\d+/.test(line)) {
+    let slot = -1, src = '', maps = null;
+    const neu = line.match(/^F(\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(.*)$/);
+    if (neu) {
+      slot = +neu[1];
+      maps = [
+        {min:+neu[2], max:+neu[3]},
+        {min:+neu[4], max:+neu[5]},
+        {min:+neu[6], max:+neu[7]},
+      ];
+      src = neu[8];
+    } else {
+      const empty = line.match(/^F(\d+)\s*$/);
+      const legacyEmpty = line.match(/^F(\d+)=\s*$/);
+      const legacy = line.match(/^F(\d+)=(.*)$/);
+      if (empty || legacyEmpty) {
+        slot = +(empty || legacyEmpty)[1];
+        state.formulas[slot] = null;
+        renderFormulaGrid();
+        if (state.selectedFormula === slot) selectFormula(slot);
+        return;
       }
+      if (legacy) {
+        slot = +legacy[1];
+        const rest = legacy[2];
+        const parts = rest.split('|');
+        if (parts.length >= 4) {
+          src = parts.slice(0, -3).join('|');
+          maps = parts.slice(-3).map(p => {
+            const [a,b] = p.split(',').map(Number);
+            return {min: a|0, max: b|0};
+          });
+        } else {
+          src = rest;
+          maps = [{min:0,max:32},{min:0,max:32},{min:0,max:32}];
+        }
+      }
+    }
+    if (slot >= 16 && slot <= 31 && src) {
+      state.formulas[slot] = { src, maps: maps || [{min:0,max:32},{min:0,max:32},{min:0,max:32}] };
       renderFormulaGrid();
+      if (state.selectedFormula === slot) selectFormula(slot);
     }
     return;
   }
+  if (line === 'HELLO') { log('HELLO (notify OK)', 'ok'); return; }
   if (line === 'PONG') { log('PONG', 'ok'); return; }
-  if (line.startsWith('DUMP ')) { dumpBuf = new Uint8Array(0); return; }
+  if (line.startsWith('DUMP ')) {
+    dumpBuf = new Uint8Array(0);
+    dumpExpect = parseInt(line.slice(5), 10) || DUMP_SIZE;
+    log('dump expect ' + dumpExpect);
+    return;
+  }
   if (line.startsWith('D ')) {
     if (!dumpBuf) dumpBuf = new Uint8Array(0);
     const chunk = hexToBytes(line.slice(2).trim());
@@ -469,7 +530,11 @@ function handleDevice(line) {
     return;
   }
   if (line === 'DUMP_END') {
+    const got = dumpBuf ? dumpBuf.length : 0;
     try {
+      if (got !== dumpExpect) {
+        throw new Error('bad dump size got ' + got + '/' + dumpExpect);
+      }
       applyDump(dumpBuf);
       const when = new Date().toISOString();
       const b64 = btoa(String.fromCharCode(...dumpBuf));
@@ -477,7 +542,12 @@ function handleDevice(line) {
       state.archives = state.archives.slice(0, 40);
       localStorage.setItem('doomBanks', JSON.stringify(state.archives));
       renderArchive();
-    } catch (e) { log(String(e), 'err'); }
+      syncFlags.dumpOk = true;
+      syncFlags.dumpErr = null;
+    } catch (e) {
+      syncFlags.dumpErr = String(e);
+      log(String(e), 'err');
+    }
     dumpBuf = null;
     return;
   }
@@ -500,6 +570,11 @@ function handleDevice(line) {
   }
   if (line.startsWith('OK')) log(line, 'ok');
   if (line.startsWith('ERR')) log(line, 'err');
+  if (line === 'OK LIST') {
+    syncFlags.listOk = true;
+    // Refresh editor if current slot was filled during LIST.
+    selectFormula(state.selectedFormula);
+  }
   if (line.startsWith('OK PUT') || line.startsWith('OK CLEAR')) {
     sendLine('BANK_DUMP').catch(e => log(String(e),'err'));
   }
@@ -537,8 +612,11 @@ async function connect() {
   rxChar = await svc.getCharacteristic(NUS_RX);
   await txChar.startNotifications();
   txChar.addEventListener('characteristicvaluechanged', onNotify);
-  // Give Android a moment to finish CCCD subscribe.
-  await new Promise(r => setTimeout(r, 300));
+  log('rx props write=' + !!rxChar.properties.write +
+      ' wr=' + !!rxChar.properties.writeWithoutResponse +
+      ' tx notify=' + !!txChar.properties.notify);
+  // Wait for CCCD + firmware HELLO before first write.
+  await new Promise(r => setTimeout(r, 600));
   state.connected = true;
   $('bleStatus').textContent = 'connected: ' + (device.name || 'BLE');
   updateBankButtons();
@@ -548,12 +626,15 @@ async function connect() {
 
 async function syncAll() {
   log('sync…', '');
+  syncFlags = { listOk: false, dumpOk: false, dumpErr: null };
   await sendLine('PING');
-  // Wait for LIST/DUMP jobs on device (they stream via notify).
-  await new Promise(r => setTimeout(r, 250));
+  await new Promise(r => setTimeout(r, 200));
   await sendLine('LIST');
-  await new Promise(r => setTimeout(r, 900));
+  await waitFlag(() => syncFlags.listOk, 8000, 'LIST');
   await sendLine('BANK_DUMP');
+  await waitFlag(() => syncFlags.dumpOk || syncFlags.dumpErr, 20000, 'DUMP');
+  if (syncFlags.dumpErr) throw new Error(syncFlags.dumpErr);
+  log('sync done', 'ok');
 }
 
 $('btnConnect').onclick = () => connect().catch(e => log(String(e.message||e), 'err'));
