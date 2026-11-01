@@ -54,6 +54,7 @@
       <button id="btnConnect" class="primary">Connect BLE</button>
       <span id="bleStatus" class="log">disconnected</span>
     </div>
+    <p class="log" style="margin:.4rem 0 0">Если телефон уже «спарил» синтез в настройках Bluetooth — <b>удали/забудь</b> его там, иначе сайт его не увидит. Подключай только через эту кнопку.</p>
     <div id="bleMenu" class="menu row hidden" style="margin-top:.5rem">
       <button id="btnExit">Left · Exit</button>
       <button id="btnImportMenu" class="primary">Mid · Import</button>
@@ -157,10 +158,23 @@ async function connect() {
     log('Web Bluetooth unavailable (need Android Chrome + HTTPS)', 'err');
     return;
   }
-  device = await navigator.bluetooth.requestDevice({
-    filters: [{ name: 'DoomsdayRadio' }],
-    optionalServices: [NUS_SERVICE]
-  });
+  // Exact name filter fails on Android: ADV name is often truncated.
+  // Prefer service UUID; also accept namePrefix. Forget system pairing first.
+  log('Tip: in phone Bluetooth settings forget/unpair Doomsday first', '');
+  try {
+    device = await navigator.bluetooth.requestDevice({
+      filters: [
+        { services: [NUS_SERVICE] },
+        { namePrefix: 'Doom' },
+        { namePrefix: 'Doomsday' }
+      ],
+      optionalServices: [NUS_SERVICE]
+    });
+  } catch (e) {
+    // Last resort chooser (Chrome may still require a filter in some builds)
+    log(String(e.message || e), 'err');
+    throw e;
+  }
   device.addEventListener('gattserverdisconnected', () => {
     $('bleStatus').textContent = 'disconnected';
     $('bleMenu').classList.add('hidden');
@@ -172,7 +186,7 @@ async function connect() {
   rxChar = await svc.getCharacteristic(NUS_RX);
   await txChar.startNotifications();
   txChar.addEventListener('characteristicvaluechanged', onNotify);
-  $('bleStatus').textContent = 'connected: ' + device.name;
+  $('bleStatus').textContent = 'connected: ' + (device.name || 'BLE');
   $('bleMenu').classList.remove('hidden');
   log('BLE connected', 'ok');
   await sendLine('PING');
