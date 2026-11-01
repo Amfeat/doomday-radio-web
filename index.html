@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Doomsday Radio — formulas</title>
+<style>
+  :root {
+    --bg: #1a1714;
+    --fg: #e8e0d4;
+    --muted: #9a9080;
+    --accent: #c45c26;
+    --line: #3a342c;
+    --ok: #6a9a5a;
+    --err: #c05040;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: "IBM Plex Mono", "Consolas", monospace;
+    background: radial-gradient(1200px 600px at 20% -10%, #2a241c, var(--bg));
+    color: var(--fg); min-height: 100vh; padding: 1rem;
+  }
+  h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: .04em; margin: 0 0 .75rem; }
+  h2 { font-size: .85rem; color: var(--muted); font-weight: 500; margin: 1.25rem 0 .5rem; }
+  .card { border: 1px solid var(--line); padding: .75rem; margin-bottom: .75rem; background: rgba(0,0,0,.18); }
+  textarea {
+    width: 100%; min-height: 5rem; background: #0e0c0a; color: var(--fg);
+    border: 1px solid var(--line); padding: .5rem; font: inherit;
+  }
+  input[type=number], select {
+    background: #0e0c0a; color: var(--fg); border: 1px solid var(--line);
+    padding: .35rem .4rem; font: inherit; width: 4.5rem;
+  }
+  button {
+    background: transparent; color: var(--fg); border: 1px solid var(--line);
+    padding: .45rem .7rem; font: inherit; cursor: pointer; margin: .15rem .25rem .15rem 0;
+  }
+  button.primary { border-color: var(--accent); color: var(--accent); }
+  button:disabled { opacity: .4; cursor: default; }
+  .row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+  .log { font-size: .75rem; color: var(--muted); max-height: 8rem; overflow: auto; white-space: pre-wrap; }
+  .ok { color: var(--ok); } .err { color: var(--err); }
+  .maps { display: grid; grid-template-columns: auto repeat(2, 4.5rem); gap: .35rem .5rem; align-items: center; }
+  .maps span { color: var(--muted); font-size: .8rem; }
+  .hidden { display: none; }
+  .menu button { min-width: 6.5rem; }
+</style>
+</head>
+<body>
+  <h1>DOOMSDAY RADIO</h1>
+
+  <div class="card">
+    <div class="row">
+      <button id="btnConnect" class="primary">Connect BLE</button>
+      <span id="bleStatus" class="log">disconnected</span>
+    </div>
+    <div id="bleMenu" class="menu row hidden" style="margin-top:.5rem">
+      <button id="btnExit">Left · Exit</button>
+      <button id="btnImportMenu" class="primary">Mid · Import</button>
+      <button id="btnDump">Right · Dump banks</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Bytebeat player</h2>
+    <textarea id="expr" spellcheck="false">(t>>4)|(t>>7)|(t*t>>10)</textarea>
+    <div class="row" style="margin-top:.5rem">
+      <label>SR <input id="sr" type="number" value="8000" min="1000" max="48000"/></label>
+      <label>X <input id="px" type="number" value="4" min="0" max="32"/></label>
+      <label>Y <input id="py" type="number" value="7" min="0" max="32"/></label>
+      <label>Z <input id="pz" type="number" value="10" min="0" max="32"/></label>
+      <button id="btnPlay" class="primary">Play</button>
+      <button id="btnStop">Stop</button>
+    </div>
+    <p id="playErr" class="err log"></p>
+  </div>
+
+  <div id="prepCard" class="card hidden">
+    <h2>Prepare import</h2>
+    <p class="log">Pick three constants in the formula (or use X/Y/Z vars). Set min/max for encoder 0…32.</p>
+    <div class="maps">
+      <span>X map</span><input id="xmin" type="number" value="0"/><input id="xmax" type="number" value="32"/>
+      <span>Y map</span><input id="ymin" type="number" value="0"/><input id="ymax" type="number" value="32"/>
+      <span>Z map</span><input id="zmin" type="number" value="0"/><input id="zmax" type="number" value="32"/>
+    </div>
+    <div class="row" style="margin-top:.5rem">
+      <label>Slot
+        <select id="slot"></select>
+      </label>
+      <button id="btnUpload" class="primary" disabled>Upload</button>
+    </div>
+    <p class="log">On the synth: right click = YES, left click = NO</p>
+  </div>
+
+  <div class="card">
+    <h2>Bank archive</h2>
+    <div id="archive" class="log">empty</div>
+    <div class="row">
+      <button id="btnRestore" disabled>Restore selected</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Log</h2>
+    <div id="log" class="log"></div>
+  </div>
+
+<script>
+const NUS_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const NUS_RX = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+const NUS_TX = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+
+const $ = (id) => document.getElementById(id);
+const logEl = $('log');
+function log(msg, cls) {
+  const line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.textContent = msg;
+  logEl.prepend(line);
+}
+
+const slotSel = $('slot');
+for (let i = 16; i <= 31; i++) {
+  const o = document.createElement('option');
+  o.value = i; o.textContent = 'F' + String(i).padStart(2,'0');
+  slotSel.appendChild(o);
+}
+
+let device, server, rxChar, txChar;
+let dumpBuf = null;
+let dumpExpect = 0;
+let archive = JSON.parse(localStorage.getItem('doomBanks') || '[]');
+let selectedArchive = -1;
+
+function renderArchive() {
+  const el = $('archive');
+  if (!archive.length) { el.textContent = 'empty'; $('btnRestore').disabled = true; return; }
+  el.innerHTML = '';
+  archive.forEach((a, i) => {
+    const d = document.createElement('div');
+    d.textContent = (selectedArchive === i ? '› ' : '  ') + a.when + '  ' + a.bytes + 'B';
+    d.style.cursor = 'pointer';
+    d.onclick = () => { selectedArchive = i; $('btnRestore').disabled = !device; renderArchive(); };
+    el.appendChild(d);
+  });
+}
+renderArchive();
+
+function sendLine(s) {
+  if (!rxChar) throw new Error('not connected');
+  const data = new TextEncoder().encode(s + '\n');
+  return rxChar.writeValueWithoutResponse(data);
+}
+
+async function connect() {
+  if (!navigator.bluetooth) {
+    log('Web Bluetooth unavailable (need Android Chrome + HTTPS)', 'err');
+    return;
+  }
+  device = await navigator.bluetooth.requestDevice({
+    filters: [{ name: 'DoomsdayRadio' }],
+    optionalServices: [NUS_SERVICE]
+  });
+  device.addEventListener('gattserverdisconnected', () => {
+    $('bleStatus').textContent = 'disconnected';
+    $('bleMenu').classList.add('hidden');
+    $('btnUpload').disabled = true;
+  });
+  server = await device.gatt.connect();
+  const svc = await server.getPrimaryService(NUS_SERVICE);
+  txChar = await svc.getCharacteristic(NUS_TX);
+  rxChar = await svc.getCharacteristic(NUS_RX);
+  await txChar.startNotifications();
+  txChar.addEventListener('characteristicvaluechanged', onNotify);
+  $('bleStatus').textContent = 'connected: ' + device.name;
+  $('bleMenu').classList.remove('hidden');
+  log('BLE connected', 'ok');
+  await sendLine('PING');
+}
+
+let notifyAcc = '';
+function onNotify(ev) {
+  const t = new TextDecoder().decode(ev.target.value);
+  notifyAcc += t;
+  let idx;
+  while ((idx = notifyAcc.indexOf('\n')) >= 0 || (idx = notifyAcc.indexOf('\r')) >= 0) {
+    let line = notifyAcc.slice(0, idx).replace(/\r/g,'');
+    notifyAcc = notifyAcc.slice(idx + 1);
+    if (!line) continue;
+    handleDevice(line);
+  }
+  // also handle lines without newline when full packet is a line
+  if (notifyAcc && !notifyAcc.includes('\n') && t.endsWith('\n') === false) {
+    // keep buffering
+  }
+}
+
+function handleDevice(line) {
+  log('< ' + line);
+  if (line.startsWith('DUMP ')) {
+    dumpExpect = parseInt(line.slice(5), 10) || 0;
+    dumpBuf = new Uint8Array(0);
+    return;
+  }
+  if (line.startsWith('D ')) {
+    const hex = line.slice(2).trim();
+    const chunk = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < chunk.length; i++) chunk[i] = parseInt(hex.substr(i*2,2), 16);
+    const merged = new Uint8Array(dumpBuf.length + chunk.length);
+    merged.set(dumpBuf); merged.set(chunk, dumpBuf.length);
+    dumpBuf = merged;
+    return;
+  }
+  if (line === 'DUMP_END') {
+    const when = new Date().toISOString();
+    const b64 = btoa(String.fromCharCode(...dumpBuf));
+    archive.unshift({ when, bytes: dumpBuf.length, b64 });
+    localStorage.setItem('doomBanks', JSON.stringify(archive.slice(0, 40)));
+    renderArchive();
+    log('bank dump saved ' + dumpBuf.length + 'B', 'ok');
+    dumpBuf = null;
+    return;
+  }
+  if (line.startsWith('OK')) log(line, 'ok');
+  if (line.startsWith('ERR')) log(line, 'err');
+}
+
+$('btnConnect').onclick = () => connect().catch(e => log(String(e), 'err'));
+$('btnExit').onclick = () => { if (device && device.gatt.connected) device.gatt.disconnect(); };
+$('btnImportMenu').onclick = () => {
+  $('prepCard').classList.remove('hidden');
+  $('btnUpload').disabled = !rxChar;
+};
+$('btnDump').onclick = () => sendLine('BANK_DUMP').catch(e => log(String(e), 'err'));
+
+$('btnUpload').onclick = async () => {
+  const expr = $('expr').value.trim().replace(/\s+/g, ' ');
+  const slot = $('slot').value;
+  const cmd = ['IMPORT', slot,
+    $('xmin').value, $('xmax').value,
+    $('ymin').value, $('ymax').value,
+    $('zmin').value, $('zmax').value,
+    expr].join(' ');
+  try {
+    await sendLine(cmd);
+    log('sent import; confirm on LCD', 'ok');
+  } catch (e) { log(String(e), 'err'); }
+};
+
+$('btnRestore').onclick = async () => {
+  if (selectedArchive < 0) return;
+  const a = archive[selectedArchive];
+  const bin = Uint8Array.from(atob(a.b64), c => c.charCodeAt(0));
+  await sendLine('BANK_RESTORE ' + bin.length);
+  for (let i = 0; i < bin.length; i += 32) {
+    const n = Math.min(32, bin.length - i);
+    let hex = 'R ';
+    for (let j = 0; j < n; j++) hex += bin[i+j].toString(16).padStart(2,'0').toUpperCase();
+    await sendLine(hex);
+    await new Promise(r => setTimeout(r, 15));
+  }
+  await sendLine('RESTORE_END');
+};
+
+// ---- Web Audio bytebeat (dollchan-style 8-bit) ----
+let audioCtx = null, node = null, playing = false, t0 = 0;
+
+function compileExpr(src) {
+  // Replace X/Y/Z with closed-over numbers; t is sample index.
+  const body = src
+    .replace(/\bX\b/g, 'x')
+    .replace(/\bY\b/g, 'y')
+    .replace(/\bZ\b/g, 'z')
+    .replace(/\bv\s*\(/gi, 'v(');
+  // eslint-disable-next-line no-new-func
+  return new Function('t', 'x', 'y', 'z', 'v', '"use strict"; return (' + body + ');');
+}
+
+function ambientV(tt, sx) {
+  tt = tt >>> 0; sx = sx|0;
+  return ((tt >> sx) & 15) + ((tt >> 10) & 7) + ((tt >> 1) & 3) + 1;
+}
+
+$('btnPlay').onclick = async () => {
+  $('playErr').textContent = '';
+  try {
+    const fn = compileExpr($('expr').value.trim());
+    const sr = Math.max(1000, Math.min(48000, +$('sr').value || 8000));
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    await audioCtx.resume();
+    if (node) { try { node.disconnect(); } catch(_){} }
+    const bufSize = 2048;
+    node = audioCtx.createScriptProcessor(bufSize, 0, 1);
+    let t = t0;
+    const ratio = sr / audioCtx.sampleRate;
+    node.onaudioprocess = (e) => {
+      const out = e.outputBuffer.getChannelData(0);
+      const x = +$('px').value||0, y = +$('py').value||0, z = +$('pz').value||0;
+      for (let i = 0; i < out.length; i++) {
+        const ti = (t + i * ratio) | 0;
+        let s = 0;
+        try { s = fn(ti, x, y, z, ambientV) & 255; } catch(_) { s = 0; }
+        out[i] = (s - 128) / 128;
+      }
+      t += out.length * ratio;
+      t0 = t;
+    };
+    node.connect(audioCtx.destination);
+    playing = true;
+  } catch (e) {
+    $('playErr').textContent = String(e.message || e);
+  }
+};
+
+$('btnStop').onclick = () => {
+  if (node) { try { node.disconnect(); } catch(_){} node = null; }
+  playing = false;
+};
+</script>
+</body>
+</html>
