@@ -417,12 +417,16 @@ function bytesToHex(buf) {
 
 async function sendLine(s) {
   if (!rxChar) throw new Error('not connected');
+  log('> ' + s);
   const data = new TextEncoder().encode(s + '\n');
-  // chunk writes if needed
-  const mtu = 180;
-  for (let i=0; i<data.length; i+=mtu) {
-    await rxChar.writeValueWithoutResponse(data.slice(i, i+mtu));
+  // Prefer write-with-response; fall back to WR if needed.
+  try {
+    if (rxChar.properties.write) await rxChar.writeValue(data);
+    else await rxChar.writeValueWithoutResponse(data);
+  } catch (e) {
+    await rxChar.writeValueWithoutResponse(data);
   }
+  await new Promise(r => setTimeout(r, 40));
 }
 
 async function sendHexChunks(prefix, buf) {
@@ -455,8 +459,10 @@ function handleDevice(line) {
     }
     return;
   }
+  if (line === 'PONG') { log('PONG', 'ok'); return; }
   if (line.startsWith('DUMP ')) { dumpBuf = new Uint8Array(0); return; }
   if (line.startsWith('D ')) {
+    if (!dumpBuf) dumpBuf = new Uint8Array(0);
     const chunk = hexToBytes(line.slice(2).trim());
     const m = new Uint8Array(dumpBuf.length + chunk.length);
     m.set(dumpBuf); m.set(chunk, dumpBuf.length); dumpBuf = m;
@@ -477,6 +483,7 @@ function handleDevice(line) {
   }
   if (line.startsWith('LIVE ')) { liveBuf = new Uint8Array(0); return; }
   if (line.startsWith('L ')) {
+    if (!liveBuf) liveBuf = new Uint8Array(0);
     const chunk = hexToBytes(line.slice(2).trim());
     const m = new Uint8Array(liveBuf.length + chunk.length);
     m.set(liveBuf); m.set(chunk, liveBuf.length); liveBuf = m;
@@ -530,6 +537,8 @@ async function connect() {
   rxChar = await svc.getCharacteristic(NUS_RX);
   await txChar.startNotifications();
   txChar.addEventListener('characteristicvaluechanged', onNotify);
+  // Give Android a moment to finish CCCD subscribe.
+  await new Promise(r => setTimeout(r, 300));
   state.connected = true;
   $('bleStatus').textContent = 'connected: ' + (device.name || 'BLE');
   updateBankButtons();
@@ -538,8 +547,12 @@ async function connect() {
 }
 
 async function syncAll() {
+  log('sync…', '');
+  await sendLine('PING');
+  // Wait for LIST/DUMP jobs on device (they stream via notify).
+  await new Promise(r => setTimeout(r, 250));
   await sendLine('LIST');
-  await new Promise(r => setTimeout(r, 200));
+  await new Promise(r => setTimeout(r, 900));
   await sendLine('BANK_DUMP');
 }
 
