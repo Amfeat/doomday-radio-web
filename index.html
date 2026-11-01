@@ -3,47 +3,60 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Doomsday Radio — formulas</title>
+<title>Doomsday Radio</title>
 <style>
   :root {
-    --bg: #1a1714;
-    --fg: #e8e0d4;
-    --muted: #9a9080;
-    --accent: #c45c26;
-    --line: #3a342c;
-    --ok: #6a9a5a;
-    --err: #c05040;
+    --bg: #1a1714; --fg: #e8e0d4; --muted: #9a9080; --accent: #c45c26;
+    --line: #3a342c; --ok: #6a9a5a; --err: #c05040; --fill: #0e0c0a;
   }
   * { box-sizing: border-box; }
   body {
-    margin: 0; font-family: "IBM Plex Mono", "Consolas", monospace;
+    margin: 0; font-family: "IBM Plex Mono", Consolas, monospace;
     background: radial-gradient(1200px 600px at 20% -10%, #2a241c, var(--bg));
-    color: var(--fg); min-height: 100vh; padding: 1rem;
+    color: var(--fg); min-height: 100vh; padding: .75rem;
   }
-  h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: .04em; margin: 0 0 .75rem; }
-  h2 { font-size: .85rem; color: var(--muted); font-weight: 500; margin: 1.25rem 0 .5rem; }
-  .card { border: 1px solid var(--line); padding: .75rem; margin-bottom: .75rem; background: rgba(0,0,0,.18); }
-  textarea {
-    width: 100%; min-height: 5rem; background: #0e0c0a; color: var(--fg);
-    border: 1px solid var(--line); padding: .5rem; font: inherit;
-  }
-  input[type=number], select {
-    background: #0e0c0a; color: var(--fg); border: 1px solid var(--line);
-    padding: .35rem .4rem; font: inherit; width: 4.5rem;
-  }
-  button {
+  h1 { font-size: 1.05rem; margin: 0 0 .6rem; letter-spacing: .04em; }
+  h2 { font-size: .8rem; color: var(--muted); font-weight: 500; margin: 0 0 .5rem; }
+  .card { border: 1px solid var(--line); padding: .65rem; margin-bottom: .65rem; background: rgba(0,0,0,.18); }
+  .row { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+  .tabs { display: flex; gap: .25rem; margin-bottom: .65rem; }
+  .tabs button { flex: 1; }
+  .tabs button.active { border-color: var(--accent); color: var(--accent); }
+  button, .filebtn {
     background: transparent; color: var(--fg); border: 1px solid var(--line);
-    padding: .45rem .7rem; font: inherit; cursor: pointer; margin: .15rem .25rem .15rem 0;
+    padding: .4rem .55rem; font: inherit; cursor: pointer;
   }
-  button.primary { border-color: var(--accent); color: var(--accent); }
+  button.primary, .filebtn.primary { border-color: var(--accent); color: var(--accent); }
   button:disabled { opacity: .4; cursor: default; }
-  .row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
-  .log { font-size: .75rem; color: var(--muted); max-height: 8rem; overflow: auto; white-space: pre-wrap; }
+  textarea, input, select {
+    background: var(--fill); color: var(--fg); border: 1px solid var(--line);
+    padding: .35rem .4rem; font: inherit;
+  }
+  textarea { width: 100%; min-height: 4.5rem; }
+  input[type=number] { width: 4.2rem; }
+  .log { font-size: .72rem; color: var(--muted); max-height: 7rem; overflow: auto; white-space: pre-wrap; }
   .ok { color: var(--ok); } .err { color: var(--err); }
-  .maps { display: grid; grid-template-columns: auto repeat(2, 4.5rem); gap: .35rem .5rem; align-items: center; }
-  .maps span { color: var(--muted); font-size: .8rem; }
-  .hidden { display: none; }
-  .menu button { min-width: 6.5rem; }
+  .muted { color: var(--muted); font-size: .75rem; }
+  .hidden { display: none !important; }
+  .grid16, .grid32 {
+    display: grid; gap: .3rem;
+  }
+  .grid16 { grid-template-columns: repeat(4, 1fr); }
+  .grid32 { grid-template-columns: repeat(4, 1fr); }
+  .slot {
+    border: 1px solid var(--line); padding: .35rem; text-align: center;
+    font-size: .72rem; cursor: pointer; min-height: 2.4rem;
+  }
+  .slot.on { border-color: var(--accent); }
+  .slot.empty { opacity: .45; }
+  .slot.sel { background: rgba(196,92,38,.2); }
+  .maps { display: grid; grid-template-columns: auto 4.2rem 4.2rem; gap: .3rem .4rem; align-items: center; }
+  .maps span { color: var(--muted); font-size: .75rem; }
+  .cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+  @media (max-width: 520px) { .cols2 { grid-template-columns: 1fr; } }
+  .field { display: flex; justify-content: space-between; gap: .4rem; font-size: .75rem; margin: .15rem 0; }
+  .field input { width: 4.5rem; }
+  .panel-title { font-size: .78rem; color: var(--accent); margin-bottom: .35rem; }
 </style>
 </head>
 <body>
@@ -52,54 +65,97 @@
   <div class="card">
     <div class="row">
       <button id="btnConnect" class="primary">Connect BLE</button>
-      <span id="bleStatus" class="log">disconnected</span>
+      <button id="btnSync" disabled>Sync</button>
+      <span id="bleStatus" class="muted">disconnected</span>
     </div>
-    <p class="log" style="margin:.4rem 0 0">Если телефон уже «спарил» синтез в настройках Bluetooth — <b>удали/забудь</b> его там, иначе сайт его не увидит. Подключай только через эту кнопку.</p>
-    <div id="bleMenu" class="menu row hidden" style="margin-top:.5rem">
-      <button id="btnExit">Left · Exit</button>
-      <button id="btnImportMenu" class="primary">Mid · Import</button>
-      <button id="btnDump">Right · Dump banks</button>
-    </div>
+    <p class="muted" style="margin:.35rem 0 0">Если синтез уже спарен в настройках телефона — забудь его. Подключай только отсюда.</p>
   </div>
 
-  <div class="card">
-    <h2>Bytebeat player</h2>
-    <textarea id="expr" spellcheck="false">(t>>4)|(t>>7)|(t*t>>10)</textarea>
-    <div class="row" style="margin-top:.5rem">
-      <label>SR <input id="sr" type="number" value="8000" min="1000" max="48000"/></label>
-      <label>X <input id="px" type="number" value="4" min="0" max="32"/></label>
-      <label>Y <input id="py" type="number" value="7" min="0" max="32"/></label>
-      <label>Z <input id="pz" type="number" value="10" min="0" max="32"/></label>
-      <button id="btnPlay" class="primary">Play</button>
-      <button id="btnStop">Stop</button>
-    </div>
-    <p id="playErr" class="err log"></p>
+  <div class="tabs">
+    <button data-tab="formulas" class="active">Формулы</button>
+    <button data-tab="bank">Банк</button>
+    <button data-tab="share">Обмен</button>
   </div>
 
-  <div id="prepCard" class="card hidden">
-    <h2>Prepare import</h2>
-    <p class="log">Pick three constants in the formula (or use X/Y/Z vars). Set min/max for encoder 0…32.</p>
-    <div class="maps">
-      <span>X map</span><input id="xmin" type="number" value="0"/><input id="xmax" type="number" value="32"/>
-      <span>Y map</span><input id="ymin" type="number" value="0"/><input id="ymax" type="number" value="32"/>
-      <span>Z map</span><input id="zmin" type="number" value="0"/><input id="zmax" type="number" value="32"/>
+  <!-- FORMULAS -->
+  <section id="tab-formulas">
+    <div class="card">
+      <h2>Custom 16…31</h2>
+      <div id="formulaGrid" class="grid16"></div>
     </div>
-    <div class="row" style="margin-top:.5rem">
-      <label>Slot
-        <select id="slot"></select>
-      </label>
-      <button id="btnUpload" class="primary" disabled>Upload</button>
+    <div class="card">
+      <h2>Редактор <span id="formulaSlotLabel" class="muted">F16</span></h2>
+      <textarea id="expr" spellcheck="false">(t>>X)|(t>>Y)|(t>>Z)</textarea>
+      <div class="row" style="margin-top:.4rem">
+        <label>SR <input id="sr" type="number" value="8000" min="1000" max="48000"/></label>
+        <label>X <input id="px" type="number" value="4" min="0" max="32"/></label>
+        <label>Y <input id="py" type="number" value="7" min="0" max="32"/></label>
+        <label>Z <input id="pz" type="number" value="10" min="0" max="32"/></label>
+        <button id="btnPlay" class="primary">Play</button>
+        <button id="btnStop">Stop</button>
+      </div>
+      <p id="playErr" class="err log"></p>
+      <div class="maps" style="margin-top:.5rem">
+        <span>X min/max</span><input id="xmin" type="number" value="0"/><input id="xmax" type="number" value="32"/>
+        <span>Y min/max</span><input id="ymin" type="number" value="0"/><input id="ymax" type="number" value="32"/>
+        <span>Z min/max</span><input id="zmin" type="number" value="0"/><input id="zmax" type="number" value="32"/>
+      </div>
+      <div class="row" style="margin-top:.5rem">
+        <button id="btnUpload" class="primary" disabled>Upload → synth</button>
+        <span class="muted">LCD: right=YES left=NO</span>
+      </div>
     </div>
-    <p class="log">On the synth: right click = YES, left click = NO</p>
-  </div>
+  </section>
 
-  <div class="card">
-    <h2>Bank archive</h2>
-    <div id="archive" class="log">empty</div>
-    <div class="row">
-      <button id="btnRestore" disabled>Restore selected</button>
+  <!-- BANK -->
+  <section id="tab-bank" class="hidden">
+    <div class="card">
+      <h2>Слоты 01…32</h2>
+      <div id="bankGrid" class="grid32"></div>
+      <div class="row" style="margin-top:.5rem">
+        <button id="btnLiveGet" disabled>Снять с синтеза</button>
+        <button id="btnBankSave" class="primary" disabled>Сохранить в слот</button>
+        <button id="btnBankClear" disabled>Очистить слот</button>
+      </div>
     </div>
-  </div>
+    <div class="card">
+      <h2>Паттерн <span id="bankSlotLabel" class="muted">—</span></h2>
+      <div class="row" style="margin-bottom:.4rem">
+        <label>Formula <input id="pOp" type="number" min="0" max="31" value="0"/></label>
+        <label>BPM <input id="pBpm" type="number" min="100" max="200" value="120"/></label>
+        <label>S1
+          <select id="pS1"><option value="0">handbrake</option><option value="1">variations</option></select>
+        </label>
+      </div>
+      <div class="cols2">
+        <div>
+          <div class="panel-title">VAR 1</div>
+          <div id="var1Fields"></div>
+        </div>
+        <div>
+          <div class="panel-title">VAR 2</div>
+          <div id="var2Fields"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SHARE -->
+  <section id="tab-share" class="hidden">
+    <div class="card">
+      <h2>Файл банка</h2>
+      <div class="row">
+        <button id="btnDownload" class="primary" disabled>Скачать .doombank</button>
+        <label class="filebtn primary">Загрузить файл<input id="fileUpload" type="file" accept=".doombank,.bin,application/octet-stream" class="hidden"/></label>
+        <button id="btnRestore" disabled>Restore → synth</button>
+      </div>
+      <p class="muted" style="margin-top:.4rem">Скачай → отправь другу → друг загрузит файл и нажмёт Restore.</p>
+    </div>
+    <div class="card">
+      <h2>Локальные архивы</h2>
+      <div id="archive" class="log">empty</div>
+    </div>
+  </section>
 
   <div class="card">
     <h2>Log</h2>
@@ -110,6 +166,8 @@
 const NUS_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
 const NUS_RX = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
 const NUS_TX = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+const PATCH_SIZE = 48;
+const DUMP_SIZE = 8 + 32 * PATCH_SIZE;
 
 const $ = (id) => document.getElementById(id);
 const logEl = $('log');
@@ -120,65 +178,351 @@ function log(msg, cls) {
   logEl.prepend(line);
 }
 
-const slotSel = $('slot');
-for (let i = 16; i <= 31; i++) {
-  const o = document.createElement('option');
-  o.value = i; o.textContent = 'F' + String(i).padStart(2,'0');
-  slotSel.appendChild(o);
+const state = {
+  formulas: {}, // 16..31 -> {src, maps:[{min,max}x3]}
+  bankOcc: 0,
+  bankRaw: null, // Uint8Array full dump
+  slots: {},     // 1..32 -> patch object or null
+  selectedFormula: 16,
+  selectedBank: 1,
+  draft: emptyPatch(),
+  archives: JSON.parse(localStorage.getItem('doomBanks') || '[]'),
+  selectedArchive: -1,
+  connected: false,
+};
+
+const VAR_FIELDS = [
+  ['shiftX','X',0,32], ['shiftY','Y',0,32], ['shiftZ','Z',0,32],
+  ['speed','Speed',0,1024], ['waveW','W',0,16], ['hookH','H',0,32],
+  ['tMultIdx','L idx',0,7], ['tOffset','T',0,524288],
+  ['volume','Vol',0,255], ['filterL','Flt L',0,255], ['filterH','Flt H',0,255],
+  ['filterQ','Q',0,255], ['filterQTarget','Q tgt',0,2],
+];
+
+function emptyPatch() {
+  return {
+    shiftX:12, shiftY:5, shiftZ:9, opType:5, speed:1024,
+    waveW:0, hookH:0, tMultIdx:2, volume:255,
+    filterL:255, filterH:0, filterQ:0, filterQTarget:0,
+    tOffset:0, bpmTarget:120,
+    shiftX2:12, shiftY2:5, shiftZ2:9, speed2:1024,
+    waveW2:0, hookH2:0, tMultIdx2:2, volume2:255,
+    filterL2:255, filterH2:0, filterQ2:0, filterQTarget2:0,
+    tOffset2:0, s1Mode:0,
+  };
 }
 
-let device, server, rxChar, txChar;
-let dumpBuf = null;
-let dumpExpect = 0;
-let archive = JSON.parse(localStorage.getItem('doomBanks') || '[]');
-let selectedArchive = -1;
+function decodePatch(buf, off=0) {
+  const v = new DataView(buf.buffer, buf.byteOffset + off, PATCH_SIZE);
+  return {
+    shiftX: v.getInt16(0,true), shiftY: v.getInt16(2,true), shiftZ: v.getInt16(4,true),
+    opType: v.getInt16(6,true), speed: v.getInt16(8,true),
+    waveW: v.getUint8(10), hookH: v.getUint8(11), tMultIdx: v.getUint8(12), volume: v.getUint8(13),
+    filterL: v.getUint8(14), filterH: v.getUint8(15), filterQ: v.getUint8(16), filterQTarget: v.getUint8(17),
+    tOffset: v.getUint32(18,true), bpmTarget: v.getUint16(22,true),
+    shiftX2: v.getInt16(24,true), shiftY2: v.getInt16(26,true), shiftZ2: v.getInt16(28,true), speed2: v.getInt16(30,true),
+    waveW2: v.getUint8(32), hookH2: v.getUint8(33), tMultIdx2: v.getUint8(34), volume2: v.getUint8(35),
+    filterL2: v.getUint8(36), filterH2: v.getUint8(37), filterQ2: v.getUint8(38), filterQTarget2: v.getUint8(39),
+    tOffset2: v.getUint32(40,true), s1Mode: v.getUint8(44),
+  };
+}
 
+function encodePatch(p) {
+  const buf = new Uint8Array(PATCH_SIZE);
+  const v = new DataView(buf.buffer);
+  v.setInt16(0, p.shiftX|0, true); v.setInt16(2, p.shiftY|0, true); v.setInt16(4, p.shiftZ|0, true);
+  v.setInt16(6, p.opType|0, true); v.setInt16(8, p.speed|0, true);
+  v.setUint8(10, p.waveW); v.setUint8(11, p.hookH); v.setUint8(12, p.tMultIdx); v.setUint8(13, p.volume);
+  v.setUint8(14, p.filterL); v.setUint8(15, p.filterH); v.setUint8(16, p.filterQ); v.setUint8(17, p.filterQTarget);
+  v.setUint32(18, p.tOffset>>>0, true); v.setUint16(22, p.bpmTarget, true);
+  v.setInt16(24, p.shiftX2|0, true); v.setInt16(26, p.shiftY2|0, true); v.setInt16(28, p.shiftZ2|0, true); v.setInt16(30, p.speed2|0, true);
+  v.setUint8(32, p.waveW2); v.setUint8(33, p.hookH2); v.setUint8(34, p.tMultIdx2); v.setUint8(35, p.volume2);
+  v.setUint8(36, p.filterL2); v.setUint8(37, p.filterH2); v.setUint8(38, p.filterQ2); v.setUint8(39, p.filterQTarget2);
+  v.setUint32(40, p.tOffset2>>>0, true); v.setUint8(44, p.s1Mode);
+  return buf;
+}
+
+function decodeDump(raw) {
+  if (!raw || raw.length < DUMP_SIZE) throw new Error('bad dump size');
+  if (raw[0]!==0x44 || raw[1]!==0x42 || raw[2]!==0x4B) throw new Error('bad magic');
+  const occ = new DataView(raw.buffer, raw.byteOffset+4, 4).getUint32(0, true);
+  const slots = {};
+  for (let s = 1; s <= 32; s++) {
+    const occupied = ((occ >> (s-1)) & 1) !== 0;
+    const off = 8 + (s-1)*PATCH_SIZE;
+    slots[s] = occupied ? decodePatch(raw, off) : null;
+  }
+  return { occ, slots, raw };
+}
+
+function applyDump(raw) {
+  const d = decodeDump(raw);
+  state.bankOcc = d.occ;
+  state.slots = d.slots;
+  state.bankRaw = d.raw;
+  renderBankGrid();
+  loadBankSlot(state.selectedBank);
+  $('btnDownload').disabled = false;
+  log('bank synced, occ=0x' + d.occ.toString(16), 'ok');
+}
+
+// ---- tabs ----
+document.querySelectorAll('.tabs button').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    ['formulas','bank','share'].forEach(t => {
+      $('tab-'+t).classList.toggle('hidden', btn.dataset.tab !== t);
+    });
+  };
+});
+
+// ---- formula grid ----
+function renderFormulaGrid() {
+  const g = $('formulaGrid');
+  g.innerHTML = '';
+  for (let i = 16; i <= 31; i++) {
+    const f = state.formulas[i];
+    const el = document.createElement('div');
+    el.className = 'slot' + (f && f.src ? ' on' : ' empty') + (state.selectedFormula===i?' sel':'');
+    el.textContent = 'F' + String(i).padStart(2,'0') + (f && f.src ? '\n·' : '\n—');
+    el.title = f && f.src ? f.src : 'empty';
+    el.onclick = () => selectFormula(i);
+    g.appendChild(el);
+  }
+}
+
+function selectFormula(i) {
+  state.selectedFormula = i;
+  $('formulaSlotLabel').textContent = 'F' + String(i).padStart(2,'0');
+  const f = state.formulas[i];
+  if (f && f.src) {
+    $('expr').value = f.src;
+    const m = f.maps || [{min:0,max:32},{min:0,max:32},{min:0,max:32}];
+    $('xmin').value = m[0].min; $('xmax').value = m[0].max;
+    $('ymin').value = m[1].min; $('ymax').value = m[1].max;
+    $('zmin').value = m[2].min; $('zmax').value = m[2].max;
+  }
+  renderFormulaGrid();
+}
+
+// ---- bank grid / fields ----
+function renderBankGrid() {
+  const g = $('bankGrid');
+  g.innerHTML = '';
+  for (let s = 1; s <= 32; s++) {
+    const p = state.slots[s];
+    const el = document.createElement('div');
+    el.className = 'slot' + (p ? ' on' : ' empty') + (state.selectedBank===s?' sel':'');
+    el.textContent = String(s).padStart(2,'0') + (p ? '\nF'+p.opType : '\n—');
+    el.onclick = () => loadBankSlot(s);
+    g.appendChild(el);
+  }
+}
+
+function buildVarFields(containerId, suffix) {
+  const box = $(containerId);
+  box.innerHTML = '';
+  VAR_FIELDS.forEach(([key, label]) => {
+    const id = key + suffix;
+    const row = document.createElement('div');
+    row.className = 'field';
+    row.innerHTML = `<span>${label}</span><input type="number" id="${id}"/>`;
+    box.appendChild(row);
+  });
+}
+buildVarFields('var1Fields', '');
+buildVarFields('var2Fields', '2');
+
+function patchToForm(p) {
+  state.draft = Object.assign(emptyPatch(), p);
+  $('pOp').value = state.draft.opType;
+  $('pBpm').value = state.draft.bpmTarget;
+  $('pS1').value = state.draft.s1Mode;
+  VAR_FIELDS.forEach(([key]) => {
+    const a = $(key); if (a) a.value = state.draft[key];
+    const b = $(key+'2'); if (b) b.value = state.draft[key+'2'];
+  });
+}
+
+function formToPatch() {
+  const p = emptyPatch();
+  p.opType = +$('pOp').value;
+  p.bpmTarget = +$('pBpm').value;
+  p.s1Mode = +$('pS1').value;
+  VAR_FIELDS.forEach(([key]) => {
+    p[key] = +$(key).value;
+    p[key+'2'] = +$(key+'2').value;
+  });
+  return p;
+}
+
+function loadBankSlot(s) {
+  state.selectedBank = s;
+  $('bankSlotLabel').textContent = String(s).padStart(2,'0');
+  const p = state.slots[s] || emptyPatch();
+  patchToForm(p);
+  renderBankGrid();
+  updateBankButtons();
+}
+
+function updateBankButtons() {
+  const on = state.connected;
+  $('btnLiveGet').disabled = !on;
+  $('btnBankSave').disabled = !on;
+  $('btnBankClear').disabled = !on;
+  $('btnUpload').disabled = !on;
+  $('btnSync').disabled = !on;
+  $('btnRestore').disabled = !on || state.selectedArchive < 0 && !state.bankRaw;
+}
+
+// ---- archives ----
 function renderArchive() {
   const el = $('archive');
-  if (!archive.length) { el.textContent = 'empty'; $('btnRestore').disabled = true; return; }
+  if (!state.archives.length) { el.textContent = 'empty'; return; }
   el.innerHTML = '';
-  archive.forEach((a, i) => {
+  state.archives.forEach((a, i) => {
     const d = document.createElement('div');
-    d.textContent = (selectedArchive === i ? '› ' : '  ') + a.when + '  ' + a.bytes + 'B';
+    d.textContent = (state.selectedArchive===i?'› ':'  ') + a.when + '  ' + a.bytes + 'B';
     d.style.cursor = 'pointer';
-    d.onclick = () => { selectedArchive = i; $('btnRestore').disabled = !device; renderArchive(); };
+    d.onclick = () => {
+      state.selectedArchive = i;
+      const bin = Uint8Array.from(atob(a.b64), c => c.charCodeAt(0));
+      try { applyDump(bin); } catch(e) { log(String(e), 'err'); }
+      renderArchive();
+      updateBankButtons();
+    };
     el.appendChild(d);
   });
 }
 renderArchive();
+renderFormulaGrid();
+renderBankGrid();
+loadBankSlot(1);
+selectFormula(16);
 
-function sendLine(s) {
+// ---- BLE ----
+let device, server, rxChar, txChar;
+let notifyAcc = '';
+let dumpBuf = null, liveBuf = null;
+
+function hexToBytes(hex) {
+  const out = new Uint8Array(hex.length/2);
+  for (let i=0;i<out.length;i++) out[i] = parseInt(hex.substr(i*2,2),16);
+  return out;
+}
+function bytesToHex(buf) {
+  return [...buf].map(b => b.toString(16).padStart(2,'0').toUpperCase()).join('');
+}
+
+async function sendLine(s) {
   if (!rxChar) throw new Error('not connected');
   const data = new TextEncoder().encode(s + '\n');
-  return rxChar.writeValueWithoutResponse(data);
+  // chunk writes if needed
+  const mtu = 180;
+  for (let i=0; i<data.length; i+=mtu) {
+    await rxChar.writeValueWithoutResponse(data.slice(i, i+mtu));
+  }
+}
+
+async function sendHexChunks(prefix, buf) {
+  for (let i=0; i<buf.length; i+=32) {
+    const n = Math.min(32, buf.length-i);
+    await sendLine(prefix + ' ' + bytesToHex(buf.subarray(i, i+n)));
+    await new Promise(r => setTimeout(r, 12));
+  }
+}
+
+function handleDevice(line) {
+  log('< ' + line);
+  if (line.startsWith('F') && line.includes('=')) {
+    const m = line.match(/^F(\d+)=(.*)$/);
+    if (m) {
+      const slot = +m[1];
+      const rest = m[2];
+      if (!rest) { state.formulas[slot] = null; }
+      else {
+        const parts = rest.split('|');
+        const src = parts[0];
+        const maps = [0,1,2].map(i => {
+          if (!parts[i+1]) return {min:0,max:32};
+          const [a,b] = parts[i+1].split(',').map(Number);
+          return {min:a, max:b};
+        });
+        state.formulas[slot] = { src, maps };
+      }
+      renderFormulaGrid();
+    }
+    return;
+  }
+  if (line.startsWith('DUMP ')) { dumpBuf = new Uint8Array(0); return; }
+  if (line.startsWith('D ')) {
+    const chunk = hexToBytes(line.slice(2).trim());
+    const m = new Uint8Array(dumpBuf.length + chunk.length);
+    m.set(dumpBuf); m.set(chunk, dumpBuf.length); dumpBuf = m;
+    return;
+  }
+  if (line === 'DUMP_END') {
+    try {
+      applyDump(dumpBuf);
+      const when = new Date().toISOString();
+      const b64 = btoa(String.fromCharCode(...dumpBuf));
+      state.archives.unshift({ when, bytes: dumpBuf.length, b64 });
+      state.archives = state.archives.slice(0, 40);
+      localStorage.setItem('doomBanks', JSON.stringify(state.archives));
+      renderArchive();
+    } catch (e) { log(String(e), 'err'); }
+    dumpBuf = null;
+    return;
+  }
+  if (line.startsWith('LIVE ')) { liveBuf = new Uint8Array(0); return; }
+  if (line.startsWith('L ')) {
+    const chunk = hexToBytes(line.slice(2).trim());
+    const m = new Uint8Array(liveBuf.length + chunk.length);
+    m.set(liveBuf); m.set(chunk, liveBuf.length); liveBuf = m;
+    return;
+  }
+  if (line === 'LIVE_END') {
+    try {
+      const p = decodePatch(liveBuf, 0);
+      patchToForm(p);
+      log('live snapshot loaded into editor', 'ok');
+    } catch (e) { log(String(e), 'err'); }
+    liveBuf = null;
+    return;
+  }
+  if (line.startsWith('OK')) log(line, 'ok');
+  if (line.startsWith('ERR')) log(line, 'err');
+  if (line.startsWith('OK PUT') || line.startsWith('OK CLEAR')) {
+    sendLine('BANK_DUMP').catch(e => log(String(e),'err'));
+  }
+}
+
+function onNotify(ev) {
+  const t = new TextDecoder().decode(ev.target.value);
+  notifyAcc += t;
+  let idx;
+  while ((idx = notifyAcc.search(/[\r\n]/)) >= 0) {
+    const line = notifyAcc.slice(0, idx).replace(/\r/g,'');
+    notifyAcc = notifyAcc.slice(idx+1);
+    if (line) handleDevice(line);
+  }
 }
 
 async function connect() {
-  if (!navigator.bluetooth) {
-    log('Web Bluetooth unavailable (need Android Chrome + HTTPS)', 'err');
-    return;
-  }
-  // Exact name filter fails on Android: ADV name is often truncated.
-  // Prefer service UUID; also accept namePrefix. Forget system pairing first.
-  log('Tip: in phone Bluetooth settings forget/unpair Doomsday first', '');
-  try {
-    device = await navigator.bluetooth.requestDevice({
-      filters: [
-        { services: [NUS_SERVICE] },
-        { namePrefix: 'Doom' },
-        { namePrefix: 'Doomsday' }
-      ],
-      optionalServices: [NUS_SERVICE]
-    });
-  } catch (e) {
-    // Last resort chooser (Chrome may still require a filter in some builds)
-    log(String(e.message || e), 'err');
-    throw e;
-  }
+  if (!navigator.bluetooth) { log('Web Bluetooth unavailable', 'err'); return; }
+  device = await navigator.bluetooth.requestDevice({
+    filters: [
+      { services: [NUS_SERVICE] },
+      { namePrefix: 'Doom' },
+      { namePrefix: 'Doomsday' }
+    ],
+    optionalServices: [NUS_SERVICE]
+  });
   device.addEventListener('gattserverdisconnected', () => {
+    state.connected = false;
     $('bleStatus').textContent = 'disconnected';
-    $('bleMenu').classList.add('hidden');
-    $('btnUpload').disabled = true;
+    updateBankButtons();
   });
   server = await device.gatt.connect();
   const svc = await server.getPrimaryService(NUS_SERVICE);
@@ -186,150 +530,122 @@ async function connect() {
   rxChar = await svc.getCharacteristic(NUS_RX);
   await txChar.startNotifications();
   txChar.addEventListener('characteristicvaluechanged', onNotify);
+  state.connected = true;
   $('bleStatus').textContent = 'connected: ' + (device.name || 'BLE');
-  $('bleMenu').classList.remove('hidden');
+  updateBankButtons();
   log('BLE connected', 'ok');
-  await sendLine('PING');
+  await syncAll();
 }
 
-let notifyAcc = '';
-function onNotify(ev) {
-  const t = new TextDecoder().decode(ev.target.value);
-  notifyAcc += t;
-  let idx;
-  while ((idx = notifyAcc.indexOf('\n')) >= 0 || (idx = notifyAcc.indexOf('\r')) >= 0) {
-    let line = notifyAcc.slice(0, idx).replace(/\r/g,'');
-    notifyAcc = notifyAcc.slice(idx + 1);
-    if (!line) continue;
-    handleDevice(line);
-  }
-  // also handle lines without newline when full packet is a line
-  if (notifyAcc && !notifyAcc.includes('\n') && t.endsWith('\n') === false) {
-    // keep buffering
-  }
+async function syncAll() {
+  await sendLine('LIST');
+  await new Promise(r => setTimeout(r, 200));
+  await sendLine('BANK_DUMP');
 }
 
-function handleDevice(line) {
-  log('< ' + line);
-  if (line.startsWith('DUMP ')) {
-    dumpExpect = parseInt(line.slice(5), 10) || 0;
-    dumpBuf = new Uint8Array(0);
-    return;
-  }
-  if (line.startsWith('D ')) {
-    const hex = line.slice(2).trim();
-    const chunk = new Uint8Array(hex.length / 2);
-    for (let i = 0; i < chunk.length; i++) chunk[i] = parseInt(hex.substr(i*2,2), 16);
-    const merged = new Uint8Array(dumpBuf.length + chunk.length);
-    merged.set(dumpBuf); merged.set(chunk, dumpBuf.length);
-    dumpBuf = merged;
-    return;
-  }
-  if (line === 'DUMP_END') {
-    const when = new Date().toISOString();
-    const b64 = btoa(String.fromCharCode(...dumpBuf));
-    archive.unshift({ when, bytes: dumpBuf.length, b64 });
-    localStorage.setItem('doomBanks', JSON.stringify(archive.slice(0, 40)));
-    renderArchive();
-    log('bank dump saved ' + dumpBuf.length + 'B', 'ok');
-    dumpBuf = null;
-    return;
-  }
-  if (line.startsWith('OK')) log(line, 'ok');
-  if (line.startsWith('ERR')) log(line, 'err');
-}
-
-$('btnConnect').onclick = () => connect().catch(e => log(String(e), 'err'));
-$('btnExit').onclick = () => { if (device && device.gatt.connected) device.gatt.disconnect(); };
-$('btnImportMenu').onclick = () => {
-  $('prepCard').classList.remove('hidden');
-  $('btnUpload').disabled = !rxChar;
-};
-$('btnDump').onclick = () => sendLine('BANK_DUMP').catch(e => log(String(e), 'err'));
+$('btnConnect').onclick = () => connect().catch(e => log(String(e.message||e), 'err'));
+$('btnSync').onclick = () => syncAll().catch(e => log(String(e), 'err'));
 
 $('btnUpload').onclick = async () => {
-  const expr = $('expr').value.trim().replace(/\s+/g, ' ');
-  const slot = $('slot').value;
+  const expr = $('expr').value.trim().replace(/\s+/g,' ');
+  const slot = state.selectedFormula;
   const cmd = ['IMPORT', slot,
     $('xmin').value, $('xmax').value,
     $('ymin').value, $('ymax').value,
-    $('zmin').value, $('zmax').value,
-    expr].join(' ');
+    $('zmin').value, $('zmax').value, expr].join(' ');
+  await sendLine(cmd);
+  log('import sent — confirm on LCD', 'ok');
+};
+
+$('btnLiveGet').onclick = () => sendLine('LIVE_GET').catch(e => log(String(e),'err'));
+
+$('btnBankSave').onclick = async () => {
+  const p = formToPatch();
+  const bin = encodePatch(p);
+  const slot = state.selectedBank;
+  await sendLine('BANK_PUT ' + slot + ' ' + PATCH_SIZE);
+  await sendHexChunks('P', bin);
+  await sendLine('PUT_END');
+};
+
+$('btnBankClear').onclick = async () => {
+  await sendLine('BANK_CLEAR ' + state.selectedBank);
+};
+
+$('btnDownload').onclick = () => {
+  if (!state.bankRaw) return;
+  const blob = new Blob([state.bankRaw], { type: 'application/octet-stream' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'doomsday-' + new Date().toISOString().slice(0,19).replace(/[:T]/g,'-') + '.doombank';
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+$('fileUpload').onchange = async (ev) => {
+  const file = ev.target.files && ev.target.files[0];
+  if (!file) return;
+  const buf = new Uint8Array(await file.arrayBuffer());
   try {
-    await sendLine(cmd);
-    log('sent import; confirm on LCD', 'ok');
+    applyDump(buf);
+    const when = new Date().toISOString();
+    const b64 = btoa(String.fromCharCode(...buf));
+    state.archives.unshift({ when: when + ' (file)', bytes: buf.length, b64 });
+    localStorage.setItem('doomBanks', JSON.stringify(state.archives.slice(0,40)));
+    state.selectedArchive = 0;
+    renderArchive();
+    log('file loaded', 'ok');
   } catch (e) { log(String(e), 'err'); }
+  ev.target.value = '';
 };
 
 $('btnRestore').onclick = async () => {
-  if (selectedArchive < 0) return;
-  const a = archive[selectedArchive];
-  const bin = Uint8Array.from(atob(a.b64), c => c.charCodeAt(0));
-  await sendLine('BANK_RESTORE ' + bin.length);
-  for (let i = 0; i < bin.length; i += 32) {
-    const n = Math.min(32, bin.length - i);
-    let hex = 'R ';
-    for (let j = 0; j < n; j++) hex += bin[i+j].toString(16).padStart(2,'0').toUpperCase();
-    await sendLine(hex);
-    await new Promise(r => setTimeout(r, 15));
+  let raw = state.bankRaw;
+  if (state.selectedArchive >= 0) {
+    const a = state.archives[state.selectedArchive];
+    raw = Uint8Array.from(atob(a.b64), c => c.charCodeAt(0));
   }
+  if (!raw) return;
+  await sendLine('BANK_RESTORE ' + raw.length);
+  await sendHexChunks('R', raw);
   await sendLine('RESTORE_END');
 };
 
-// ---- Web Audio bytebeat (dollchan-style 8-bit) ----
-let audioCtx = null, node = null, playing = false, t0 = 0;
-
-function compileExpr(src) {
-  // Replace X/Y/Z with closed-over numbers; t is sample index.
-  const body = src
-    .replace(/\bX\b/g, 'x')
-    .replace(/\bY\b/g, 'y')
-    .replace(/\bZ\b/g, 'z')
-    .replace(/\bv\s*\(/gi, 'v(');
-  // eslint-disable-next-line no-new-func
-  return new Function('t', 'x', 'y', 'z', 'v', '"use strict"; return (' + body + ');');
-}
-
+// ---- Web Audio ----
+let audioCtx = null, node = null, t0 = 0;
 function ambientV(tt, sx) {
   tt = tt >>> 0; sx = sx|0;
   return ((tt >> sx) & 15) + ((tt >> 10) & 7) + ((tt >> 1) & 3) + 1;
 }
-
+function compileExpr(src) {
+  const body = src.replace(/\bX\b/g,'x').replace(/\bY\b/g,'y').replace(/\bZ\b/g,'z').replace(/\bv\s*\(/gi,'v(');
+  return new Function('t','x','y','z','v', '"use strict"; return (' + body + ');');
+}
 $('btnPlay').onclick = async () => {
   $('playErr').textContent = '';
   try {
     const fn = compileExpr($('expr').value.trim());
-    const sr = Math.max(1000, Math.min(48000, +$('sr').value || 8000));
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const sr = Math.max(1000, Math.min(48000, +$('sr').value||8000));
+    if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
     await audioCtx.resume();
-    if (node) { try { node.disconnect(); } catch(_){} }
-    const bufSize = 2048;
-    node = audioCtx.createScriptProcessor(bufSize, 0, 1);
+    if (node) try { node.disconnect(); } catch(_){}
+    node = audioCtx.createScriptProcessor(2048, 0, 1);
     let t = t0;
     const ratio = sr / audioCtx.sampleRate;
     node.onaudioprocess = (e) => {
       const out = e.outputBuffer.getChannelData(0);
-      const x = +$('px').value||0, y = +$('py').value||0, z = +$('pz').value||0;
-      for (let i = 0; i < out.length; i++) {
-        const ti = (t + i * ratio) | 0;
-        let s = 0;
-        try { s = fn(ti, x, y, z, ambientV) & 255; } catch(_) { s = 0; }
-        out[i] = (s - 128) / 128;
+      const x=+$('px').value||0, y=+$('py').value||0, z=+$('pz').value||0;
+      for (let i=0;i<out.length;i++) {
+        const ti = (t + i*ratio)|0;
+        let s=0; try { s = fn(ti,x,y,z,ambientV)&255; } catch(_){ s=0; }
+        out[i] = (s-128)/128;
       }
-      t += out.length * ratio;
-      t0 = t;
+      t += out.length * ratio; t0 = t;
     };
     node.connect(audioCtx.destination);
-    playing = true;
-  } catch (e) {
-    $('playErr').textContent = String(e.message || e);
-  }
+  } catch (e) { $('playErr').textContent = String(e.message||e); }
 };
-
-$('btnStop').onclick = () => {
-  if (node) { try { node.disconnect(); } catch(_){} node = null; }
-  playing = false;
-};
+$('btnStop').onclick = () => { if (node) { try{node.disconnect();}catch(_){} node=null; } };
 </script>
 </body>
 </html>
